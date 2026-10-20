@@ -54,7 +54,9 @@ where version 1.2 managed about 20, and draws each frame about **3.5× faster**.
   or DirectX 12 (try DirectX 12 if the window stays black or stutters).
 - **Graphics memory:** 2 GB minimum (with AQW's Quality set to **Low**), 4 GB or more recommended
 - **RAM:** 8 GB minimum, 16 GB recommended
-- **CPU with AVX2:** Intel 4th-gen Core (2013) or newer, AMD Ryzen or newer
+- **CPU with AVX2:** Intel 4th-gen Core (2013) or newer, AMD Ryzen or newer. The releases are
+  built for AVX2; on an older CPU (including Intel Pentium/Celeron N-series), build from source
+  with `MUGETSU_TARGET_CPU=x86-64-v2` as described in [`source/README.md`](source/README.md).
 
 ## How to use
 

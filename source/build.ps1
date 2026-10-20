@@ -74,7 +74,9 @@ if ($PrepareOnly) {
 }
 
 # 4. Build. x86-64-v3 (AVX2) like the released builds; paths in the program are shortened.
-$flags = @('-Ctarget-feature=+crt-static', '-Ctarget-cpu=x86-64-v3',
+# For a PC without AVX2 set MUGETSU_TARGET_CPU=x86-64-v2 (or x86-64 for the oldest CPUs).
+$targetCpu = if ($env:MUGETSU_TARGET_CPU) { $env:MUGETSU_TARGET_CPU } else { 'x86-64-v3' }
+$flags = @('-Ctarget-feature=+crt-static', "-Ctarget-cpu=$targetCpu",
     "--remap-path-prefix=$ruffle=ruffle", "--remap-path-prefix=$env:USERPROFILE=home")
 if ($env:CARGO_HOME) { $flags += "--remap-path-prefix=$env:CARGO_HOME=cargo" }
 if (-not $NoPgo) {

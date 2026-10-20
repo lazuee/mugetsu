@@ -32,7 +32,8 @@ Requirements
     more recommended.
   - RAM: 8 GB minimum, 16 GB recommended.
   - A CPU with AVX2: Intel Core 4th generation ("Haswell", 2013) or newer, AMD Ryzen or
-    newer.
+    newer. This download is built for AVX2; on an older CPU (for example a Pentium or Celeron
+    N-series) the source can be built with MUGETSU_TARGET_CPU=x86-64-v2 instead.
   - The usual desktop libraries (ALSA or PipeWire/PulseAudio sound, fontconfig, zlib,
     OpenSSL 3, libudev); desktop systems have them already.
 

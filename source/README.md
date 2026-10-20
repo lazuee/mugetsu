@@ -49,6 +49,14 @@ Then, in this folder:
 
 The result is `build/out/Mugetsu`. `--no-pgo` builds without the speed profile.
 
+By default the build targets `x86-64-v3` (AVX2), like the releases. If your CPU has no AVX2
+(Intel Pentium/Celeron N-series and other Atom-based chips, or Core before 4th generation),
+build for `x86-64-v2` instead:
+
+```
+MUGETSU_TARGET_CPU=x86-64-v2 ./build.sh
+```
+
 ## What the changes do
 
 Speed:

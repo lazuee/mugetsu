@@ -24,6 +24,8 @@ Build Mugetsu's Linux binary from the pinned Ruffle commit.
 The resulting binary is: source/build/out/Mugetsu
 
 Environment:
+  MUGETSU_TARGET_CPU     CPU to build for: x86-64-v3 (default, needs AVX2),
+                         x86-64-v2 or x86-64 (older CPUs), or native (this PC only)
   MUGETSU_RUFFLE_REMOTE  Ruffle git remote or local clone
   MUGETSU_CRATES_DIR     directory containing wgpu-core-30.0.1,
                          wgpu-hal-30.0.1, gc-arena-0.7.0,
@@ -98,8 +100,14 @@ if ((prepare_only)); then
 fi
 
 # 4. Build. x86-64-v3 (AVX2) like the released builds; paths in the program are shortened.
+# For a PC without AVX2 (e.g. a Pentium/Celeron N-series) set MUGETSU_TARGET_CPU=x86-64-v2,
+# or x86-64 for the oldest 64-bit CPUs. Release builds use the default.
+if [[ -z "${MUGETSU_TARGET_CPU:-}" && -r /proc/cpuinfo ]] && ! grep -qw avx2 /proc/cpuinfo; then
+    echo "warning: this CPU has no AVX2, so the default x86-64-v3 build won't run on it." >&2
+    echo "         Set MUGETSU_TARGET_CPU=x86-64-v2 to build for this PC." >&2
+fi
 # When several prefixes match, the last one given wins: most specific last.
-flags=("-Ctarget-cpu=x86-64-v3"
+flags=("-Ctarget-cpu=${MUGETSU_TARGET_CPU:-x86-64-v3}"
     "--remap-path-prefix=$HOME=home" "--remap-path-prefix=$ruffle=ruffle")
 if [[ -n "${CARGO_HOME:-}" ]]; then
     flags+=("--remap-path-prefix=$CARGO_HOME=cargo")

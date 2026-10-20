@@ -10919,11 +10919,12 @@ index 2265dc24c..91a3223d3 100644
  
      let subscriber = tracing_subscriber::registry()
          .with(env_filter)
-@@ -195,6 +342,23 @@ fn main() -> Result<(), Error> {
+@@ -195,6 +342,24 @@ fn main() -> Result<(), Error> {
  
      subscriber.init();
  
 +    tracing::info!("Mugetsu {} (Ruffle {RUFFLE_VERSION})", mugetsu::VERSION);
++    mugetsu::configure_low_end_cpu();
 +    INTEL_DX12.with(|intel| {
 +        if let Some(name) = &*intel.borrow() {
 +            tracing::info!(
@@ -10945,10 +10946,10 @@ index 2265dc24c..91a3223d3 100644
      });
 diff --git a/desktop/src/mugetsu.rs b/desktop/src/mugetsu.rs
 new file mode 100644
-index 000000000..53eb549ed
+index 000000000..4f202f58453db5d160cbe574ab352cd2e8b7f656
 --- /dev/null
 +++ b/desktop/src/mugetsu.rs
-@@ -0,0 +1,770 @@
+@@ -0,0 +1,852 @@
 +//! AQW build (Mugetsu): things the release player does on its own, without a launcher:
 +//! the window title, remembering that the Vulkan driver crashed on this PC (so the next start
 +//! uses DirectX 12), the "running on the built-in graphics" tip and the new-version notice.
@@ -11004,6 +11005,77 @@ index 000000000..53eb549ed
 +                .map(|dir| dir.join(name).exists() || dir.join(format!("{name}.txt")).exists())
 +        })
 +        .unwrap_or(false)
++}
++
++// --- Low-end CPU profile ------------------------------------------------------------------
++//
++// Mugetsu's release builds target x86-64-v3 (AVX2). Builds for older CPUs (x86-64-v2) run
++// everywhere, but those machines are usually slow for other reasons too. Only there, leave
++// one core for the main thread and ask for Quality Low sooner. AVX2 PCs keep the old behavior.
++
++/// Whether this CPU lacks one of the features the x86-64-v3 release build needs (AVX2 and
++/// friends). Always false on non-x86 platforms: the profile is only for old x86 PCs.
++pub fn low_end_cpu() -> bool {
++    static LOW_END: OnceLock<bool> = OnceLock::new();
++    *LOW_END.get_or_init(|| {
++        // For testing the profile on a fast PC, and for A/B comparisons.
++        if std::env::var_os("RUFFLE_TEST_LOW_END").is_some() {
++            return true;
++        }
++        if std::env::var_os("MUGETSU_NO_LOW_END").is_some() {
++            return false;
++        }
++        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
++        {
++            // x86-64-v3 = AVX, AVX2, BMI1, BMI2, FMA, LZCNT and MOVBE. Check all of them:
++            // the release binary needs every one, and a CPU missing any is one of the old
++            // machines this profile is for.
++            !(is_x86_feature_detected!("avx")
++                && is_x86_feature_detected!("avx2")
++                && is_x86_feature_detected!("bmi1")
++                && is_x86_feature_detected!("bmi2")
++                && is_x86_feature_detected!("fma")
++                && is_x86_feature_detected!("lzcnt")
++                && is_x86_feature_detected!("movbe"))
++        }
++        #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
++        {
++            false
++        }
++    })
++}
++
++/// Rayon workers for a CPU with `cores` threads. On four threads or fewer, leave one for the
++/// main thread (game ticks, command recording); larger CPUs don't need the reservation.
++fn low_end_workers(cores: usize) -> usize {
++    if cores <= 4 {
++        cores.saturating_sub(1).max(1)
++    } else {
++        cores
++    }
++}
++
++/// Called once after logging starts and before the first render: on CPUs without
++/// x86-64-v3, cap Rayon's global pool and say so in the log. Does nothing on AVX2 PCs.
++pub fn configure_low_end_cpu() {
++    if !low_end_cpu() {
++        return;
++    }
++    let cores = std::thread::available_parallelism().map_or(1, |n| n.get());
++    let env_threads = std::env::var("RAYON_NUM_THREADS").ok();
++    let workers: usize = env_threads
++        .as_deref()
++        .and_then(|value| value.parse().ok())
++        .unwrap_or_else(|| low_end_workers(cores));
++    // Respect an explicit RAYON_NUM_THREADS: Rayon reads it when its global pool is made.
++    let applied = env_threads.is_none()
++        && workers != cores
++        && ruffle_render_wgpu::set_low_end_worker_threads(workers);
++    tracing::info!(
++        "Low-end CPU (no AVX2/x86-64-v3): {cores} threads, {workers} for parallel drawing; \
++        worker cap: {applied}; build has AVX2: {}",
++        cfg!(target_feature = "avx2")
++    );
 +}
 +
 +// --- Vulkan driver crashes ----------------------------------------------------------------
@@ -11502,7 +11574,10 @@ index 000000000..53eb549ed
 +        SLOW_WINDOWS.store(0, Ordering::Relaxed);
 +        return;
 +    }
-+    if SLOW_WINDOWS.fetch_add(1, Ordering::Relaxed) + 1 < 3 && !test {
++    // Without AVX2/x86-64-v3, ask after the second slow window (10 s) instead of the third
++    // (15 s): Quality Low is the biggest speed-up on those machines.
++    let windows_needed = if low_end_cpu() { 2 } else { 3 };
++    if SLOW_WINDOWS.fetch_add(1, Ordering::Relaxed) + 1 < windows_needed && !test {
 +        return;
 +    }
 +    LOW_TIP_DONE.store(true, Ordering::Relaxed);
@@ -11692,7 +11767,7 @@ index 000000000..53eb549ed
 +
 +#[cfg(test)]
 +mod tests {
-+    use super::parse_version;
++    use super::{low_end_workers, parse_version};
 +
 +    #[test]
 +    fn versions() {
@@ -11701,6 +11776,14 @@ index 000000000..53eb549ed
 +        assert_eq!(parse_version("v2"), Some((2, 0, 0)));
 +        assert_eq!(parse_version("v1.0-beta"), None);
 +        assert!(parse_version("v1.0.10") > parse_version("1.0.9"));
++    }
++
++    #[test]
++    fn low_end_worker_counts() {
++        assert_eq!(low_end_workers(1), 1);
++        assert_eq!(low_end_workers(2), 1);
++        assert_eq!(low_end_workers(4), 3);
++        assert_eq!(low_end_workers(8), 8);
 +    }
 +}
 +
@@ -16901,7 +16984,7 @@ index 1787a84bf..a55bfb85f 100644
      pub(crate) texture: wgpu::Texture,
      repeating_linear: OnceCell<BitmapBinds>,
      repeating_nearest: OnceCell<BitmapBinds>,
-@@ -304,3 +313,464 @@ impl Texture {
+@@ -304,3 +313,476 @@ impl Texture {
          })
      }
  }
@@ -16923,6 +17006,18 @@ index 1787a84bf..a55bfb85f 100644
 +
 +pub fn atlas_enabled_now() -> bool {
 +    ATLAS_ENABLED.load(std::sync::atomic::Ordering::Relaxed)
++}
++
++/// AQW build: caps Rayon's global pool for the low-end CPU profile (see
++/// `mugetsu::configure_low_end_cpu`). Call before the first parallel draw; a pool that already
++/// exists is left alone, and `false` says the cap was not applied. Desktop only.
++#[cfg(not(target_family = "wasm"))]
++pub fn set_low_end_worker_threads(workers: usize) -> bool {
++    rayon::ThreadPoolBuilder::new()
++        .num_threads(workers)
++        .thread_name(|index| format!("rayon-low-end-{index}"))
++        .build_global()
++        .is_ok()
 +}
 +
 +pub(crate) static ATLAS_ENABLED: std::sync::atomic::AtomicBool =

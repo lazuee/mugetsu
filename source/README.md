@@ -67,6 +67,9 @@ Speed:
   cleanup.
 - Memory leaks fixed (weak-keyed `Dictionary`, unused game files freed), plus a faster memory
   allocator.
+- On CPUs without AVX2/x86-64-v3 only: a low-end profile leaves one core free on 4-thread
+  CPUs and asks for Quality Low sooner. AVX2 machines keep the old behavior; set
+  `MUGETSU_NO_LOW_END=1` to turn the profile off.
 - DirectX 12: a faster command recorder and fixes, used by default on Intel and Qualcomm
   graphics.
 

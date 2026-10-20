@@ -10946,10 +10946,10 @@ index 2265dc24c..91a3223d3 100644
      });
 diff --git a/desktop/src/mugetsu.rs b/desktop/src/mugetsu.rs
 new file mode 100644
-index 000000000..4f202f58453db5d160cbe574ab352cd2e8b7f656
+index 000000000..eb4fcc1591e1b143846cafc8bd404fe913ac4a37
 --- /dev/null
 +++ b/desktop/src/mugetsu.rs
-@@ -0,0 +1,852 @@
+@@ -0,0 +1,850 @@
 +//! AQW build (Mugetsu): things the release player does on its own, without a launcher:
 +//! the window title, remembering that the Vulkan driver crashed on this PC (so the next start
 +//! uses DirectX 12), the "running on the built-in graphics" tip and the new-version notice.
@@ -11014,15 +11014,13 @@ index 000000000..4f202f58453db5d160cbe574ab352cd2e8b7f656
 +// one core for the main thread and ask for Quality Low sooner. AVX2 PCs keep the old behavior.
 +
 +/// Whether this CPU lacks one of the features the x86-64-v3 release build needs (AVX2 and
-+/// friends). Always false on non-x86 platforms: the profile is only for old x86 PCs.
++/// friends). The profile is off by default; set `MUGETSU_LOW_END=1` to opt in on an old PC.
++/// Always false on non-x86 platforms: the profile is only for old x86 PCs.
 +pub fn low_end_cpu() -> bool {
 +    static LOW_END: OnceLock<bool> = OnceLock::new();
 +    *LOW_END.get_or_init(|| {
-+        // For testing the profile on a fast PC, and for A/B comparisons.
-+        if std::env::var_os("RUFFLE_TEST_LOW_END").is_some() {
-+            return true;
-+        }
-+        if std::env::var_os("MUGETSU_NO_LOW_END").is_some() {
++        // Off unless explicitly requested: this is an opt-in for old CPUs.
++        if !std::env::var("MUGETSU_LOW_END").is_ok_and(|value| value == "1") {
 +            return false;
 +        }
 +        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
